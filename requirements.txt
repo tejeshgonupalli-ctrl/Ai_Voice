@@ -1,0 +1,12 @@
+streamlit
+torch==2.1.0
+torchaudio==2.1.0
+Flask==2.3.3
+soundfile==0.12.1
+sounddevice==0.4.6
+TTS==0.21.1
+transformers==4.33.3
+
+
+
+ 
