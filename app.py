@@ -4,9 +4,38 @@ import sounddevice as sd
 import scipy.io.wavfile as wav
 import os
 import time
+import wave
+import contextlib
+
+def merge_wavs(wav_files, output_file):
+    with contextlib.ExitStack() as stack:
+        wavs = [stack.enter_context(wave.open(w, 'rb')) for w in wav_files]
+
+        params = wavs[0].getparams()
+        with wave.open(output_file, 'wb') as out:
+            out.setparams(params)
+            for w in wavs:
+                out.writeframes(w.readframes(w.getnframes()))
+
+
+def split_text(text, max_chars=120):
+    sentences = text.replace("\n", " ").split(".")
+    chunks = []
+    current = ""
+
+    for s in sentences:
+        if len(current) + len(s) < max_chars:
+            current += s + ". "
+        else:
+            chunks.append(current.strip())
+            current = s + ". "
+    if current:
+        chunks.append(current.strip())
+    return chunks
 
 
 # -------- XTTS SAFE ADVANCED EMOTION ENGINE ----------
+
 EMOTION_STYLES = {
     "friendly": {"speed": 1.0},
     "angry": {"speed": 1.3},
@@ -28,10 +57,15 @@ if not os.path.exists("output"):
 # ---------------- LOAD MODEL ---------------- #
 @st.cache_resource
 def load_model():
-    return TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2", progress_bar=True)
+    return TTS(
+        model_name="tts_models/multilingual/multi-dataset/xtts_v2",
+        progress_bar=False,
+        gpu=False
+    )
 
 
 tts = load_model()
+
 
 # ---------------- SIDEBAR ---------------- #
 st.sidebar.title("🎚 Chatterbox Controls")
@@ -69,6 +103,8 @@ with tab1:
         "Emotion Strength",
         0.5, 2.0, 1.0
    )
+    
+    emotion_strength = min(emotion_strength, 1.2)
 
     speed = st.slider(
         "Speech Speed",
@@ -88,16 +124,34 @@ with tab1:
         else:
             with st.spinner("Cloning Voice... Please wait"):
                 output_path = "output/cloned_voice.wav"
-                tts.tts_to_file(
-                    text=text_input,
-                    speaker_wav="voices/reference.wav",
-                    file_path=output_path,
-                    language="en",
-                    speed=speed * emotion_strength
-          )
+                chunks = split_text(text_input)
+                progress = st.progress(0)
+                output_files = []
+              
 
 
-                time.sleep(1)
+                for i, chunk in enumerate(chunks):
+                    part_path = f"output/part_{i}.wav"
+
+                    tts.tts_to_file(
+                        text=chunk,
+                        speaker_wav="voices/reference.wav",
+                        file_path=part_path,
+                        language="en",
+                        speed=speed * emotion_strength,
+                    )
+
+                    output_files.append(part_path)
+                    progress.progress((i + 1) / len(chunks))
+
+                # use last generated file as output (simple & fast)
+                final_output = "output/final_cloned_voice.wav"
+                merge_wavs(output_files, final_output)
+                output_path = final_output
+                
+                for f in output_files:
+                    os.remove(f)
+
 
             st.success("✅ Voice Generated Successfully!")
             st.audio(output_path)
@@ -137,9 +191,6 @@ with tab2:
                        speed=speed * emotion_strength
  )
                    
-
-                    
-                time.sleep(1)
 
                 st.success("✅ Speech Converted Successfully!")
                 st.audio(output_path)
