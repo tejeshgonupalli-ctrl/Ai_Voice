@@ -57,11 +57,16 @@ if not os.path.exists("output"):
 # ---------------- LOAD MODEL ---------------- #
 @st.cache_resource
 def load_model():
+    import torch
+    use_gpu = torch.cuda.is_available()
+
     return TTS(
         model_name="tts_models/multilingual/multi-dataset/xtts_v2",
         progress_bar=False,
-        gpu=False
+        gpu=use_gpu
     )
+
+
 
 
 tts = load_model()
